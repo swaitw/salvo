@@ -1,42 +1,29 @@
-name: release
+name: Release
 on:
   push:
-    branches:
-      - release
-    paths:
-      - "**/Cargo.toml"
-      - ".github/workflows/release.yml"
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+.*"
+  create:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+.*"
 
 jobs:
-  git-tag:
+  version-info:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
+          components: rustfmt, clippy
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Get releasing version
-        working-directory: salvo
+        working-directory: .
         run: echo NEXT_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_ENV
 
       - name: Check published version
         run: echo PREV_VERSION=$(cargo search salvo --limit 1 | sed -nE 's/^[^"]*"//; s/".*//1p' -) >> $GITHUB_ENV
-
-      - name: Auto tag lastest version
-        uses: bullrich/commit-autotag@main
-        if: env.NEXT_VERSION != env.PREV_VERSION
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-        with:
-          strategy: regex
-          root: "salvo/Cargo.toml"
-          regex_pattern: "version\\s*=\\s*\"([0-9\\.]+)\""
-          tag_prefix: "v"
-          # version: "${{ env.NEXT_VERSION }}"
 
   publish:
     runs-on: ubuntu-latest
@@ -45,22 +32,53 @@ jobs:
       max-parallel: 1
       matrix:
         package:
+          - crate: salvo-serde-util
+            path: crates/serde-util
           - crate: salvo_macros
-            path: macros
+            path: crates/macros
           - crate: salvo_core
-            path: core
+            path: crates/core
           - crate: salvo_extra
-            path: extra
+            path: crates/extra
+          - crate: salvo-proxy
+            path: crates/proxy
+          - crate: salvo-compression
+            path: crates/compression
+          - crate: salvo-jwt-auth
+            path: crates/jwt-auth
+          - crate: salvo-session
+            path: crates/session
+          - crate: salvo-flash
+            path: crates/flash
+          - crate: salvo-cors
+            path: crates/cors
+          - crate: salvo-csrf
+            path: crates/csrf
+          - crate: salvo-cache
+            path: crates/cache
+          - crate: salvo-rate-limiter
+            path: crates/rate-limiter
+          - crate: salvo-serve-static
+            path: crates/serve-static
+          - crate: salvo-otel
+            path: crates/otel
+          - crate: salvo-oapi-macros
+            path: crates/oapi-macros
+          - crate: salvo-oapi
+            path: crates/oapi
+          - crate: salvo-craft-macros
+            path: crates/craft-macros
+          - crate: salvo-craft
+            path: crates/craft
           - crate: salvo
-            path: "salvo"
+            path: crates/salvo
     steps:
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
+          components: rustfmt, clippy
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Get releasing version
         working-directory: ${{ matrix.package.path }}
@@ -88,4 +106,4 @@ jobs:
         run: |
           echo "Cargo Publishing..."
           cargo publish --no-verify
-          echo "New version $NEXT_VERSION has published"
+          echo "New version $NEXT_VERSION has been published"

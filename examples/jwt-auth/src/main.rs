@@ -1,9 +1,9 @@
-use chrono::{Duration, Utc};
 use jsonwebtoken::{self, EncodingKey};
-use salvo::extra::jwt_auth::{JwtAuthDepotExt, JwtAuthHandler, JwtAuthState, QueryExtractor};
 use salvo::http::{Method, StatusError};
+use salvo::jwt_auth::{ConstDecoder, QueryFinder};
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
+use time::{Duration, OffsetDateTime};
 
 const SECRET_KEY: &str = "YOUR SECRET_KEY";
 
@@ -17,16 +17,18 @@ pub struct JwtClaims {
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let auth_handler: JwtAuthHandler<JwtClaims> = JwtAuthHandler::new(SECRET_KEY.to_owned())
-        .with_extractors(vec![
-            // Box::new(HeaderExtractor::new()),
-            Box::new(QueryExtractor::new("jwt_token")),
-            // Box::new(CookieExtractor::new("jwt_token")),
-        ])
-        .with_response_error(false);
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878"))
-        .serve(Router::with_hoop(auth_handler).handle(index))
+    let auth_handler: JwtAuth<JwtClaims, _> =
+        JwtAuth::new(ConstDecoder::from_secret(SECRET_KEY.as_bytes()))
+            .finders(vec![
+                // Box::new(HeaderFinder::new()),
+                Box::new(QueryFinder::new("jwt_token")),
+                // Box::new(CookieFinder::new("jwt_token")),
+            ])
+            .force_passed(true);
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor)
+        .serve(Router::with_hoop(auth_handler).goal(index))
         .await;
 }
 #[handler]
@@ -40,17 +42,17 @@ async fn index(req: &mut Request, depot: &mut Depot, res: &mut Response) -> anyh
             res.render(Text::Html(LOGIN_HTML));
             return Ok(());
         }
-        let exp = Utc::now() + Duration::days(14);
+        let exp = OffsetDateTime::now_utc() + Duration::days(14);
         let claim = JwtClaims {
             username,
-            exp: exp.timestamp(),
+            exp: exp.unix_timestamp(),
         };
         let token = jsonwebtoken::encode(
             &jsonwebtoken::Header::default(),
             &claim,
             &EncodingKey::from_secret(SECRET_KEY.as_bytes()),
         )?;
-        res.redirect_other(&format!("/?jwt_token={}", token))?;
+        res.render(Redirect::other(format!("/?jwt_token={token}")));
     } else {
         match depot.jwt_auth_state() {
             JwtAuthState::Authorized => {
@@ -64,7 +66,7 @@ async fn index(req: &mut Request, depot: &mut Depot, res: &mut Response) -> anyh
                 res.render(Text::Html(LOGIN_HTML));
             }
             JwtAuthState::Forbidden => {
-                res.set_status_error(StatusError::forbidden());
+                res.render(StatusError::forbidden());
             }
         }
     }
@@ -85,10 +87,10 @@ static LOGIN_HTML: &str = r#"<!DOCTYPE html>
         <form action="/" method="post">
         <label for="username"><b>Username</b></label>
         <input type="text" placeholder="Enter Username" name="username" required>
-    
+
         <label for="password"><b>Password</b></label>
         <input type="password" placeholder="Enter Password" name="password" required>
-    
+
         <button type="submit">Login</button>
     </form>
     </body>

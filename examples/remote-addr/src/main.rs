@@ -2,7 +2,10 @@ use salvo::prelude::*;
 
 #[handler]
 async fn index(req: &mut Request, res: &mut Response) {
-    res.render(Text::Plain(format!("remote address: {:?}", req.remote_addr())));
+    res.render(Text::Plain(format!(
+        "remote address: {:?}",
+        req.remote_addr()
+    )));
 }
 
 #[tokio::main]
@@ -10,6 +13,7 @@ async fn main() {
     tracing_subscriber::fmt().init();
 
     let router = Router::new().get(index);
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }

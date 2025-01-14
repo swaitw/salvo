@@ -1,0 +1,22 @@
+[package]
+name = "example-db-sea-orm"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+salvo = { workspace = true, features = ["affix-state", "serve-static"] }
+tracing .workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+serde = { workspace = true, features = ["derive"] }
+tera .workspace = true
+sea-orm = { workspace = true, features = [
+  "debug-print",
+  "runtime-tokio-native-tls",
+  "sqlx-sqlite",
+  # "sqlx-postgres",
+  # "sqlx-mysql",
+] }
+async-std = { workspace = true, features = ["attributes", "tokio1"] }
+sea-orm-migration .workspace = true

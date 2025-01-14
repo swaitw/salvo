@@ -1,0 +1,56 @@
+[package]
+name = "salvo-oapi-macros"
+version = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+description = "Macros for salvo-oapi"
+license = { workspace = true }
+documentation = "https://docs.rs/salvo-oapi-macros/"
+homepage = { workspace = true }
+repository = { workspace = true }
+readme = "./README.md"
+keywords = ["http", "async", "openapi", "swagger"]
+categories = ["network-programming", "asynchronous"]
+authors = ["Juha Kukkonen <juha7kukkonen@gmail.com>", "Chrislearn Young <chris@acroidea.com>"]
+
+[lib]
+proc-macro = true
+
+[features]
+default = []
+chrono = []
+decimal = []
+decimal-float = []
+ulid = []
+url = []
+uuid = []
+time = []
+smallvec = []
+repr = []
+indexmap = []
+non-strict-integers = []
+compact_str = []
+
+[dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+proc-macro-crate = { workspace = true }
+proc-macro2-diagnostics = { workspace = true }
+regex = { workspace = true }
+salvo-serde-util = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
+
+
+[dev-dependencies]
+salvo = { path = "../salvo", features = ["oapi"], default-features = false }
+serde_json = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true , features = ["serde"] }
+assert-json-diff = { workspace = true }
+time = { workspace = true, features = ["serde-human-readable"] }
+serde_with = { workspace = true }
+paste = { workspace = true }
+compact_str = { workspace = true, features = ["serde"] }
+
+[lints]
+workspace = true

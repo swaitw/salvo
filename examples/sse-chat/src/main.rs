@@ -5,32 +5,33 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::LazyLock;
 
 use futures_util::StreamExt;
-use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use salvo::extra::sse::{SseEvent, SseKeepAlive};
 use salvo::prelude::*;
+use salvo::sse::{SseEvent, SseKeepAlive};
 
 type Users = Mutex<HashMap<usize, mpsc::UnboundedSender<Message>>>;
 
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(1);
-static ONLINE_USERS: Lazy<Users> = Lazy::new(Users::default);
+static ONLINE_USERS: LazyLock<Users> = LazyLock::new(Users::default);
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let router = Router::new().handle(index).push(
+    let router = Router::new().goal(index).push(
         Router::with_path("chat")
             .get(user_connected)
-            .push(Router::with_path("<id>").post(chat_send)),
+            .push(Router::with_path("{id}").post(chat_send)),
     );
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }
 
 #[derive(Debug)]
@@ -44,11 +45,11 @@ async fn chat_send(req: &mut Request, res: &mut Response) {
     let my_id = req.param::<usize>("id").unwrap();
     let msg = std::str::from_utf8(req.payload().await.unwrap()).unwrap();
     user_message(my_id, msg);
-    res.set_status_code(StatusCode::OK);
+    res.status_code(StatusCode::OK);
 }
 
 #[handler]
-async fn user_connected(_req: &mut Request, res: &mut Response) {
+async fn user_connected(res: &mut Response) {
     // Use a counter to assign a new unique ID for this user.
     let my_id = NEXT_USER_ID.fetch_add(1, Ordering::Relaxed);
 
@@ -64,24 +65,26 @@ async fn user_connected(_req: &mut Request, res: &mut Response) {
         .unwrap();
 
     // Save the sender in our list of connected users.
-    ONLINE_USERS.lock().unwrap().insert(my_id, tx);
+    ONLINE_USERS.lock().insert(my_id, tx);
 
     // Convert messages into Server-Sent Events and returns resulting stream.
     let stream = rx.map(|msg| match msg {
-        Message::UserId(my_id) => Ok::<_, salvo::Error>(SseEvent::default().name("user").data(my_id.to_string())),
-        Message::Reply(reply) => Ok(SseEvent::default().data(reply)),
+        Message::UserId(my_id) => {
+            Ok::<_, salvo::Error>(SseEvent::default().name("user").text(my_id.to_string()))
+        }
+        Message::Reply(reply) => Ok(SseEvent::default().text(reply)),
     });
-    SseKeepAlive::new(stream).streaming(res).ok();
+    SseKeepAlive::new(stream).stream(res);
 }
 
 fn user_message(my_id: usize, msg: &str) {
-    let new_msg = format!("<User#{}>: {}", my_id, msg);
+    let new_msg = format!("<User#{my_id}>: {msg}");
 
     // New message from this user, send it to everyone else (except same uid)...
     //
     // We use `retain` instead of a for loop so that we can reap any user that
     // appears to have disconnected.
-    ONLINE_USERS.lock().unwrap().retain(|uid, tx| {
+    ONLINE_USERS.lock().retain(|uid, tx| {
         if my_id == *uid {
             // don't send to same user, but do retain
             true
@@ -118,7 +121,7 @@ static INDEX_HTML: &str = r#"
         sse.onopen = function() {
             chat.innerHTML = "<p><em>Connected!</em></p>";
         }
-        var userId;
+        let userId;
         sse.addEventListener("user", function(msg) {
             userId = msg.data;
         });
@@ -126,12 +129,12 @@ static INDEX_HTML: &str = r#"
             showMessage(msg.data);
         };
         document.getElementById('submit').onclick = function() {
-            var msg = text.value;
+            var txt = msg.value;
             var xhr = new XMLHttpRequest();
-            xhr.open("POST", `${uri}/${user_id}`, true);
-            xhr.send(msg);
-            text.value = '';
-            showMessage('<You>: ' + msg);
+            xhr.open("POST", `http://${window.location.host}/chat/${userId}`, true);
+            xhr.send(txt);
+            msg.value = '';
+            showMessage('<You>: ' + txt);
         };
         function showMessage(data) {
             const line = document.createElement('p');

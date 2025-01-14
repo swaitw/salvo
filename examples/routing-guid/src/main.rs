@@ -8,15 +8,15 @@ async fn main() {
 
     // invalid guid: 123e4567-h89b-12d3-a456-9AC7CBDCEE52
     // valid guid: 123e4567-e89b-12d3-a456-9AC7CBDCEE52
-    PathFilter::register_part_regex(
+    PathFilter::register_wisp_regex(
         "guid",
         Regex::new("[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}").unwrap(),
     );
 
-    let router = Router::with_path("<id:guid>").get(index);
+    let router = Router::with_path("{id:guid}").get(index);
 
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }
 
 #[handler]

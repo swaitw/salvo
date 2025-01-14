@@ -1,7 +1,6 @@
 use std::fs::create_dir_all;
 use std::path::Path;
 
-use salvo::extra::size_limiter::max_size;
 use salvo::prelude::*;
 
 #[handler]
@@ -13,15 +12,15 @@ async fn upload(req: &mut Request, res: &mut Response) {
     let file = req.file("file").await;
     if let Some(file) = file {
         let dest = format!("temp/{}", file.name().unwrap_or("file"));
-        tracing::debug!(dest = %dest, "upload file");
-        if let Err(e) = std::fs::copy(&file.path(), Path::new(&dest)) {
-            res.set_status_code(StatusCode::INTERNAL_SERVER_ERROR);
-            res.render(Text::Plain(format!("file not found in request: {}", e)));
+        tracing::debug!(dest, "upload file");
+        if let Err(e) = std::fs::copy(file.path(), Path::new(&dest)) {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Text::Plain(format!("file not found in request: {e}")));
         } else {
-            res.render(Text::Plain(format!("File uploaded to {}", dest)));
+            res.render(Text::Plain(format!("File uploaded to {dest}")));
         }
     } else {
-        res.set_status_code(StatusCode::BAD_REQUEST);
+        res.status_code(StatusCode::BAD_REQUEST);
         res.render(Text::Plain("file not found in request"));
     }
 }
@@ -40,8 +39,9 @@ async fn main() {
                 .post(upload),
         )
         .push(Router::with_path("unlimit").post(upload));
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }
 
 static INDEX_HTML: &str = r#"<!DOCTYPE html>

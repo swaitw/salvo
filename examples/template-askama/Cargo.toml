@@ -1,0 +1,12 @@
+[package]
+name = "example-template-askama"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+askama = "0.11"
+salvo = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true

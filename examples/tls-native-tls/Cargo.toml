@@ -1,0 +1,12 @@
+[package]
+name = "example-tls-native-tls"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+
+[dependencies]
+salvo = { workspace = true, features = ["native-tls"] }
+tokio = { workspace = true, features = ["macros"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -1,8 +1,7 @@
-use salvo::listener::AcmeListener;
 use salvo::prelude::*;
 
 #[handler]
-async fn hello_world() -> &'static str {
+async fn hello() -> &'static str {
     "Hello World"
 }
 
@@ -10,16 +9,13 @@ async fn hello_world() -> &'static str {
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let mut router = Router::new().get(hello_world);
-    let listener = AcmeListener::builder()
-        // .directory("letsencrypt", salvo::listener::acme::LETS_ENCRYPT_STAGING)
-        .cache_path("acme/letsencrypt")
-        .add_domain("acme-http01.salvo.rs")
-        .http01_challege(&mut router)
-        .bind("0.0.0.0:443")
-        .await;
-    tracing::info!("Listening on https://0.0.0.0:443");
-    Server::new(listener.join(TcpListener::bind("0.0.0.0:80")))
-        .serve(router)
-        .await;
+    let mut router = Router::new().get(hello);
+    let listener = TcpListener::new("0.0.0.0:443")
+        .acme()
+        // .directory("letsencrypt", salvo::conn::acme::LETS_ENCRYPT_STAGING)
+        .cache_path("/temp/letsencrypt")
+        .add_domain("test.salvo.rs") // Replace this domain name with your own.
+        .http01_challenge(&mut router);
+    let acceptor = listener.join(TcpListener::new("0.0.0.0:80")).bind().await;
+    Server::new(acceptor).serve(router).await;
 }

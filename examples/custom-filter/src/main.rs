@@ -1,7 +1,7 @@
 use salvo::prelude::*;
 
 #[handler]
-async fn hello_world() -> &'static str {
+async fn hello() -> &'static str {
     "Hello World"
 }
 
@@ -9,13 +9,14 @@ async fn hello_world() -> &'static str {
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    // only allow access from http://localhost:7878/, http://127.0.0.1:7878/ will get not found page.
+    // only allow access from http://localhost:5800/, http://0.0.0.0:5800/ will get not found page.
     let router = Router::new()
         .filter_fn(|req, _| {
             let host = req.header::<String>("HOST").unwrap_or_default();
-            host == "localhost:7878"
+            host == "localhost:5800"
         })
-        .get(hello_world);
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+        .get(hello);
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }

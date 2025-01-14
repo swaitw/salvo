@@ -1,38 +1,39 @@
-use salvo::extra::compression;
-use salvo::extra::serve_static::*;
 use salvo::prelude::*;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let base_dir = std::env::current_exe()
+    println!("current_dir: {:?}", std::env::current_dir().unwrap());
+    let base_dir = std::env::current_dir()
         .unwrap()
-        .join("../../../examples/compression/static")
+        .join("compression/static")
         .canonicalize()
         .unwrap();
-    println!("Base Dir: {:?}", base_dir);
+    println!("Base Dir: {base_dir:?}");
 
     let router = Router::new()
-        .push(Router::with_path("ws_chat").get(FileHandler::new(base_dir.join("ws_chat.txt"))))
         .push(
-            Router::new()
-                .hoop(compression::deflate())
+            Router::with_hoop(Compression::new().force_priority(true))
+                .path("ws_chat")
+                .get(StaticFile::new(base_dir.join("ws_chat.txt"))),
+        )
+        .push(
+            Router::with_hoop(Compression::new().enable_brotli(CompressionLevel::Fastest))
                 .path("sse_chat")
-                .get(FileHandler::new(base_dir.join("sse_chat.txt"))),
+                .get(StaticFile::new(base_dir.join("sse_chat.txt"))),
         )
         .push(
-            Router::new()
-                .hoop(compression::brotli())
+            Router::with_hoop(Compression::new().enable_zstd(CompressionLevel::Fastest))
                 .path("todos")
-                .get(FileHandler::new(base_dir.join("todos.txt"))),
+                .get(StaticFile::new(base_dir.join("todos.txt"))),
         )
         .push(
-            Router::new()
-                .hoop(compression::gzip())
-                .path("<*path>")
-                .get(DirHandler::new(base_dir)),
+            Router::with_hoop(Compression::new().enable_gzip(CompressionLevel::Fastest))
+                .path("{*path}")
+                .get(StaticDir::new(base_dir)),
         );
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }

@@ -16,13 +16,13 @@ async fn show(req: &mut Request, res: &mut Response) {
             <form id="form" method="post">
                 <label>First Name:</label><input type="text" name="first_name" />
                 <label>Last Name:</label><input type="text" name="last_name" />
-                <legend>What is Your Favorite Pet?</legend>      
-                <input type="checkbox" name="lovers" value="Cats">Cats<br>      
-                <input type="checkbox" name="lovers" value="Dogs">Dogs<br>      
-                <input type="checkbox" name="lovers" value="Birds">Birds<br>    
+                <legend>What is Your Favorite Pet?</legend>
+                <input type="checkbox" name="lovers" value="Cats">Cats<br>
+                <input type="checkbox" name="lovers" value="Dogs">Dogs<br>
+                <input type="checkbox" name="lovers" value="Birds">Birds<br>
                 <input type="submit" value="Submit" />
             </form>
-            <script> 
+            <script>
             let form = document.getElementById("form");
             form.addEventListener("submit", async (e) => {{
                 e.preventDefault();
@@ -54,29 +54,33 @@ async fn edit<'a>(good_man: GoodMan<'a>, res: &mut Response) {
 }
 
 #[derive(Serialize, Deserialize, Extractible, Debug)]
-#[extract(default_source(from = "body", format = "json"))]
+#[salvo(extract(default_source(from = "body")))]
 struct GoodMan<'a> {
-    #[extract(source(from = "param"))]
+    #[salvo(extract(source(from = "param")))]
+    #[serde(default)]
     id: i64,
-    #[extract(source(from = "query"))]
+    #[salvo(extract(source(from = "query")))]
+    #[serde(default)]
     username: &'a str,
     first_name: String,
     last_name: String,
     lovers: Vec<String>,
-    #[extract(source(from = "request"))]
+    #[salvo(extract(flatten))]
     nested: Nested<'a>,
 }
 
 #[derive(Serialize, Deserialize, Extractible, Debug)]
-#[extract(default_source(from = "body", format = "json"))]
+#[salvo(extract(default_source(from = "body")))]
 struct Nested<'a> {
-    #[extract(source(from = "param"))]
+    #[salvo(extract(source(from = "param")))]
+    #[serde(default)]
     id: i64,
-    #[extract(source(from = "query"))]
+    #[salvo(extract(source(from = "query")))]
+    #[serde(default)]
     username: &'a str,
     first_name: String,
     last_name: String,
-    #[extract(rename = "lovers")]
+    #[salvo(rename = "lovers")]
     #[serde(default)]
     pets: Vec<String>,
 }
@@ -85,8 +89,9 @@ struct Nested<'a> {
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let router = Router::with_path("<id>").get(show).post(edit);
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    println!("Example url: http://127.0.0.1:7878/95");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+    let router = Router::with_path("{id}").get(show).post(edit);
+
+    println!("Example url: http://0.0.0.0:5800/95");
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(router).await;
 }

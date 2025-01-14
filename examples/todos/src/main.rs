@@ -1,10 +1,11 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 use salvo::prelude::*;
+use salvo::size_limiter;
 
 use self::models::*;
 
-static STORE: Lazy<Db> = Lazy::new(new_store);
+static STORE: LazyLock<Db> = LazyLock::new(new_store);
 
 #[tokio::main]
 async fn main() {
@@ -13,30 +14,38 @@ async fn main() {
 }
 
 pub(crate) async fn start_server() {
-    let router = Router::with_path("todos")
+    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    Server::new(acceptor).serve(route()).await;
+}
+
+fn route() -> Router {
+    Router::with_path("todos")
+        .hoop(size_limiter::max_size(1024 * 16))
         .get(list_todos)
         .post(create_todo)
-        .push(Router::with_path("<id>").put(update_todo).delete(delete_todo));
-    tracing::info!("Listening on http://127.0.0.1:7878");
-    Server::new(TcpListener::bind("127.0.0.1:7878")).serve(router).await;
+        .push(
+            Router::with_path("{id}")
+                .put(update_todo)
+                .delete(delete_todo),
+        )
 }
 
 #[handler]
 pub async fn list_todos(req: &mut Request, res: &mut Response) {
-    let opts = req.extract_body::<ListOptions>().await.unwrap_or_default();
+    let opts = req.parse_body::<ListOptions>().await.unwrap_or_default();
     let todos = STORE.lock().await;
     let todos: Vec<Todo> = todos
         .clone()
         .into_iter()
         .skip(opts.offset.unwrap_or(0))
-        .take(opts.limit.unwrap_or(std::usize::MAX))
+        .take(opts.limit.unwrap_or(usize::MAX))
         .collect();
     res.render(Json(todos));
 }
 
 #[handler]
 pub async fn create_todo(req: &mut Request, res: &mut Response) {
-    let new_todo = req.extract_body::<Todo>().await.unwrap();
+    let new_todo = req.parse_body::<Todo>().await.unwrap();
     tracing::debug!(todo = ?new_todo, "create todo");
 
     let mut vec = STORE.lock().await;
@@ -44,38 +53,38 @@ pub async fn create_todo(req: &mut Request, res: &mut Response) {
     for todo in vec.iter() {
         if todo.id == new_todo.id {
             tracing::debug!(id = ?new_todo.id, "todo already exists");
-            res.set_status_code(StatusCode::BAD_REQUEST);
+            res.status_code(StatusCode::BAD_REQUEST);
             return;
         }
     }
 
     vec.push(new_todo);
-    res.set_status_code(StatusCode::CREATED);
+    res.status_code(StatusCode::CREATED);
 }
 
 #[handler]
 pub async fn update_todo(req: &mut Request, res: &mut Response) {
     let id = req.param::<u64>("id").unwrap();
-    let updated_todo = req.extract_body::<Todo>().await.unwrap();
+    let updated_todo = req.parse_body::<Todo>().await.unwrap();
     tracing::debug!(todo = ?updated_todo, id = ?id, "update todo");
     let mut vec = STORE.lock().await;
 
     for todo in vec.iter_mut() {
         if todo.id == id {
             *todo = updated_todo;
-            res.set_status_code(StatusCode::OK);
+            res.status_code(StatusCode::OK);
             return;
         }
     }
 
-    tracing::debug!(id = ?id, "todo is not found");
-    res.set_status_code(StatusCode::NOT_FOUND);
+    tracing::debug!(?id, "todo is not found");
+    res.status_code(StatusCode::NOT_FOUND);
 }
 
 #[handler]
 pub async fn delete_todo(req: &mut Request, res: &mut Response) {
     let id = req.param::<u64>("id").unwrap();
-    tracing::debug!(id = ?id, "delete todo");
+    tracing::debug!(?id, "delete todo");
 
     let mut vec = STORE.lock().await;
 
@@ -84,10 +93,10 @@ pub async fn delete_todo(req: &mut Request, res: &mut Response) {
 
     let deleted = vec.len() != len;
     if deleted {
-        res.set_status_code(StatusCode::NO_CONTENT);
+        res.status_code(StatusCode::NO_CONTENT);
     } else {
-        tracing::debug!(id = ?id, "todo is not found");
-        res.set_status_code(StatusCode::NOT_FOUND);
+        tracing::debug!(?id, "todo is not found");
+        res.status_code(StatusCode::NOT_FOUND);
     }
 }
 
@@ -117,8 +126,8 @@ mod models {
 
 #[cfg(test)]
 mod tests {
-    use reqwest::Client;
     use salvo::http::StatusCode;
+    use salvo::test::TestClient;
 
     use super::models::Todo;
 
@@ -128,23 +137,18 @@ mod tests {
             super::start_server().await;
         });
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        let client = Client::new();
-        let resp = client
-            .post("http://127.0.0.1:7878/todos")
+        let res = TestClient::post("http://0.0.0.0:5800/todos")
             .json(&test_todo())
-            .send()
-            .await
-            .unwrap();
+            .send(super::route())
+            .await;
 
-        assert_eq!(resp.status(), StatusCode::CREATED);
-        let resp = client
-            .post("http://127.0.0.1:7878/todos")
+        assert_eq!(res.status_code.unwrap(), StatusCode::CREATED);
+        let res = TestClient::post("http://0.0.0.0:5800/todos")
             .json(&test_todo())
-            .send()
-            .await
-            .unwrap();
+            .send(super::route())
+            .await;
 
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(res.status_code.unwrap(), StatusCode::BAD_REQUEST);
     }
 
     fn test_todo() -> Todo {

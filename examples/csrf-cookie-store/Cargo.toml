@@ -1,0 +1,12 @@
+[package]
+name = "example-csrf-cookie-store"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+salvo = { workspace = true, features = ["csrf"] }
+tokio = { workspace = true, features = ["macros"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde = { workspace = true, features = ["derive"] }
